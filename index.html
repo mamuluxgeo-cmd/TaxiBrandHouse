@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20260604-2" />
+  <link rel="stylesheet" href="style.css?v=20260604-3" />
 </head>
 <body>
   <div class="aurora aurora-one"></div>
@@ -25,7 +25,7 @@
       APP_NAME: 'Taxi Brand House'
     };
   </script>
-  <script src="script.js?v=20260604-queue-fix"></script>
+  <script src="script.js?v=20260604-stats-fast"></script>
   <script>
     function taxiQuoteCode(value) {
       return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
@@ -47,6 +47,100 @@
       var newBal = d.balance + amount;
       var disabled = saleSaving[d.code] ? 'disabled' : '';
       return '<div class="driver-card" style="align-items:stretch;display:grid;gap:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><strong>' + e(d.fullName) + '</strong><small>' + e(d.code) + ' • ' + e(d.personalId) + ' • ' + e(d.phone) + '</small></div><button class="btn ghost small" onclick="removeSale(\'' + c + '\')" ' + disabled + '>×</button></div><div class="calc-box"><div class="calc-item"><span>ძველი ქულა</span><strong>' + fmt(d.balance) + '</strong></div><div class="calc-item"><span>დასამატებელი</span><input id="saleAmt_' + key + '" class="input" type="text" style="margin-top:8px" placeholder="ქულა" value="' + e(saleAmounts[d.code] || '') + '" oninput="saleAmounts[\'' + c + '\']=this.value;updateSaleCalc(\'' + c + '\')" ' + disabled + '></div><div class="calc-item"><span>ახალი ბალანსი</span><strong id="saleNew_' + key + '" class="' + cls(newBal) + '">' + fmt(newBal) + '</strong></div></div><div class="form-actions" style="margin-top:0"><button class="btn success" onclick="saveSale(\'' + c + '\')" ' + disabled + '>' + (saleSaving[d.code] ? 'ინახება...' : 'შენახვა') + '</button><button class="btn ghost" onclick="goHistory(\'' + c + '\')" ' + disabled + '>ისტორია</button></div></div>';
+    };
+
+    var fastStatsData = null;
+    var fastStatsLoading = false;
+    var fastStatsPeriod = 'today';
+    var fastStatsCache = {};
+
+    function localDriverStats() {
+      var total = drivers.reduce(function(a, d) { return a + n(d.balance); }, 0);
+      var active = drivers.filter(function(d) { return (d.status || 'აქტიური') === 'აქტიური'; }).length;
+      var negative = drivers.filter(function(d) { return n(d.balance) < 0; });
+      var topPositive = drivers.slice().sort(function(a, b) { return n(b.balance) - n(a.balance); }).slice(0, 10);
+      var topNegative = negative.slice().sort(function(a, b) { return n(a.balance) - n(b.balance); }).slice(0, 10);
+      return { totalDrivers: drivers.length, activeDrivers: active, totalBalance: total, negativeCount: negative.length, todayAddedPoints: 0, todayPaidCash: 0, monthAddedPoints: 0, monthPaidCash: 0, topPositive: topPositive, topNegative: topNegative, lastOperations: [], cashierStats: [], periodLabel: 'მხოლოდ მიმდინარე ბაზა' };
+    }
+
+    function statCard(label, value, hint, extraClass) {
+      return '<div class="card metric"><div><div class="metric-label">' + e(label) + '</div><div class="metric-value ' + (extraClass || '') + '">' + value + '</div></div><div class="muted" style="font-size:12px;margin-top:8px">' + e(hint || '') + '</div></div>';
+    }
+
+    function compactDriverTable(title, rows, sign) {
+      return '<div class="card"><h3 class="card-title">' + e(title) + '</h3><div class="table-wrap"><table class="table"><thead><tr><th>კოდი</th><th>სახელი გვარი</th><th>ტელეფონი</th><th>ქულა</th></tr></thead><tbody>' + ((rows || []).map(function(d) {
+        return '<tr><td>' + e(d.code) + '</td><td><b>' + e(d.fullName || d.name) + '</b></td><td>' + e(d.phone || '') + '</td><td class="points ' + cls(d.balance) + '">' + fmt(d.balance) + '</td></tr>';
+      }).join('') || '<tr><td colspan="4"><div class="empty">მონაცემი არ არის</div></td></tr>') + '</tbody></table></div></div>';
+    }
+
+    function operationsTable(rows) {
+      return '<div class="card"><h3 class="card-title">ბოლო ოპერაციები</h3><div class="table-wrap"><table class="table"><thead><tr><th>დრო</th><th>ტაქსისტი</th><th>ტიპი</th><th>ქულა</th><th>თანხა</th><th>მოლარე</th></tr></thead><tbody>' + ((rows || []).map(function(o) {
+        var type = o.type === 'sale' ? 'ქულის დამატება' : o.type === 'payout' ? 'თანხის გაცემა' : first(o.type, o.operation, '');
+        return '<tr><td>' + e(first(o.dateTime, o.createdAt, o.date, '')) + '</td><td>' + e(first(o.driverName, o.fullName, o.name, '')) + '</td><td>' + e(type) + '</td><td class="points">' + fmt(first(o.points, o.amount, 0)) + '</td><td>' + gel(first(o.cashAmount, o.payoutAmount, 0)) + '</td><td>' + e(first(o.cashier, o.user, o.createdBy, '')) + '</td></tr>';
+      }).join('') || '<tr><td colspan="6"><div class="empty">ოპერაციები არ არის</div></td></tr>') + '</tbody></table></div></div>';
+    }
+
+    function cashiersTable(rows) {
+      return '<div class="card"><h3 class="card-title">მოლარეების ჯამები</h3><div class="table-wrap"><table class="table"><thead><tr><th>მოლარე</th><th>დამატებული ქულა</th><th>გაცემული ქულა</th><th>გაცემული თანხა</th><th>ოპერაციები</th></tr></thead><tbody>' + ((rows || []).map(function(o) {
+        return '<tr><td><b>' + e(first(o.cashier, o.user, o.name, '')) + '</b></td><td class="points ok">' + fmt(first(o.addedPoints, o.salePoints, 0)) + '</td><td class="points bad">' + fmt(first(o.payoutPoints, 0)) + '</td><td>' + gel(first(o.paidCash, o.cashAmount, 0)) + '</td><td>' + fmt(first(o.count, o.operations, 0)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="5"><div class="empty">მონაცემი არ არის</div></td></tr>') + '</tbody></table></div></div>';
+    }
+
+    window.stats = function() {
+      var data = fastStatsData || localDriverStats();
+      var loading = fastStatsLoading ? '<div class="card"><div class="empty">სტატისტიკა იტვირთება...</div></div>' : '';
+      return '<div class="card"><div class="toolbar"><button class="btn ' + (fastStatsPeriod === 'today' ? 'primary' : 'ghost') + '" onclick="setStatsPeriod(\'today\')">დღეს</button><button class="btn ' + (fastStatsPeriod === 'yesterday' ? 'primary' : 'ghost') + '" onclick="setStatsPeriod(\'yesterday\')">გუშინ</button><button class="btn ' + (fastStatsPeriod === 'month' ? 'primary' : 'ghost') + '" onclick="setStatsPeriod(\'month\')">ეს თვე</button><button class="btn ' + (fastStatsPeriod === 'prevMonth' ? 'primary' : 'ghost') + '" onclick="setStatsPeriod(\'prevMonth\')">წინა თვე</button><button class="btn ghost" onclick="loadFastStats(true)">განახლება</button></div><div class="muted" style="margin-top:10px;font-size:13px">იტვირთება შეკუმშული მონაცემით. სხვა გვერდებს არ ანელებს.</div></div>' + loading + '<div class="grid cols-4" style="margin-top:14px">' + statCard('სულ ტაქსისტები', fmt(data.totalDrivers || 0), 'ბაზაში') + statCard('აქტიური', fmt(data.activeDrivers || 0), 'სტატუსით აქტიური') + statCard('სულ დარჩენილი ქულა', fmt(data.totalBalance || 0), 'მიმდინარე ბალანსები', cls(data.totalBalance)) + statCard('მინუსში', fmt(data.negativeCount || 0), 'უარყოფითი ბალანსი', 'bad') + statCard('დღეს დამატებული ქულა', fmt(data.todayAddedPoints || 0), 'ნავაჭარი დღეს', 'ok') + statCard('დღეს გაცემული თანხა', gel(data.todayPaidCash || 0), 'გაცემები დღეს') + statCard('ამ თვის დამატებული ქულა', fmt(data.monthAddedPoints || 0), 'მიმდინარე თვე', 'ok') + statCard('ამ თვის გაცემული თანხა', gel(data.monthPaidCash || 0), 'მიმდინარე თვე') + '</div><div class="grid cols-2" style="margin-top:14px">' + compactDriverTable('ტოპ 10 ქულიანი ტაქსისტი', data.topPositive || []) + compactDriverTable('ტოპ 10 მინუსში მყოფი', data.topNegative || []) + '</div><div style="margin-top:14px">' + operationsTable(data.lastOperations || []) + '</div><div style="margin-top:14px">' + cashiersTable(data.cashierStats || []) + '</div>';
+    };
+
+    async function loadFastStats(force) {
+      if (page !== 'stats') return;
+      var cacheKey = fastStatsPeriod;
+      var now = Date.now();
+      if (!force && fastStatsCache[cacheKey] && now - fastStatsCache[cacheKey].time < 60000) {
+        fastStatsData = fastStatsCache[cacheKey].data;
+        render();
+        return;
+      }
+      fastStatsLoading = true;
+      render();
+      try {
+        var r;
+        try { r = await call('fastStats', { period: fastStatsPeriod }); }
+        catch (e1) { r = await call('stats', { period: fastStatsPeriod, fast: true }); }
+        fastStatsData = r.stats || r;
+        fastStatsCache[cacheKey] = { time: Date.now(), data: fastStatsData };
+      } catch (err) {
+        fastStatsData = localDriverStats();
+        msg('სტატისტიკა დროებით ძირითადი ბაზიდან ჩანს', err.message, 'bad');
+      }
+      fastStatsLoading = false;
+      render();
+    }
+
+    window.setStatsPeriod = function(period) {
+      fastStatsPeriod = period;
+      fastStatsData = null;
+      render();
+      loadFastStats(true);
+    };
+
+    var originalGo = window.go;
+    window.go = function(p) {
+      if (p === 'users' && typeof isAdmin === 'function' && !isAdmin()) return msg('წვდომა შეზღუდულია', 'მომხმარებლების დამატება მხოლოდ ადმინს შეუძლია', 'bad');
+      page = p;
+      selectedCode = '';
+      opAmount = '';
+      render();
+      if (p === 'stats') loadFastStats(false);
+    };
+
+    var originalReload = window.reload;
+    window.reload = async function() {
+      msg('იტვირთება...', '', 'info');
+      await load();
+      if (page === 'stats') await loadFastStats(true);
+      render();
+      msg('განახლდა', '', 'ok');
     };
   </script>
 </body>
