@@ -32,6 +32,7 @@ function gel(x){return n(x).toLocaleString('ka-GE',{minimumFractionDigits:2,maxi
 function cls(x){x=n(x);return x>0?'ok':x<0?'bad':'muted'}
 function first(){for(let i=0;i<arguments.length;i++){let v=arguments[i];if(v!==undefined&&v!==null&&String(v).trim()!=='')return v}return ''}
 function driverByCode(code){return drivers.find(d=>String(d.code)==String(code))}
+function isAdmin(){const r=norm(first(user?.role,user?.['როლი'],''));return r.includes('admin')||r.includes('ადმინ')||r.includes('ადმინი')}
 
 function msg(title,text='',kind='ok'){
   const el=document.createElement('div');
@@ -81,13 +82,14 @@ async function load(){
 
 function render(){
   if(!token)return renderLogin();
-  app.innerHTML=`<div class="app-shell"><aside class="sidebar"><div class="brand"><div class="logo">🚕</div><div><div class="brand-title">Taxi Brand House</div><div class="brand-subtitle">ქულების სისტემა</div></div></div><div class="nav"><button class="nav-btn ${page=='drivers'?'active':''}" onclick="go('drivers')">🚕 ტაქსისტები</button><button class="nav-btn ${page=='sale'?'active':''}" onclick="go('sale')">＋ ქულის დამატება</button><button class="nav-btn ${page=='payout'?'active':''}" onclick="go('payout')">₾ თანხის გაცემა</button><button class="nav-btn ${page=='history'?'active':''}" onclick="go('history')">◷ ისტორია</button><button class="nav-btn ${page=='stats'?'active':''}" onclick="go('stats')">◈ სტატისტიკა</button></div><div class="sidebar-footer"><b>${e(user?.name||'მომხმარებელი')}</b><br><button class="btn ghost small" onclick="logout()">გასვლა</button></div></aside><main class="main"><header class="topbar"><div><h1 class="page-title">${title()}</h1><div class="page-subtitle">სწრაფი ძებნა კოდით, სახელით, პირადობით ან ტელეფონით</div></div><div class="top-actions"><button class="btn ghost" onclick="reload()">განახლება</button><button class="btn primary" onclick="openDriver()">ტაქსისტის დამატება</button></div></header><section class="content">${body()}</section></main></div>`;
+  const userMenu=isAdmin()?`<button class="nav-btn ${page=='users'?'active':''}" onclick="go('users')">👤 მომხმარებლები</button>`:'';
+  app.innerHTML=`<div class="app-shell"><aside class="sidebar"><div class="brand"><div class="logo">🚕</div><div><div class="brand-title">Taxi Brand House</div><div class="brand-subtitle">ქულების სისტემა</div></div></div><div class="nav"><button class="nav-btn ${page=='drivers'?'active':''}" onclick="go('drivers')">🚕 ტაქსისტები</button><button class="nav-btn ${page=='sale'?'active':''}" onclick="go('sale')">＋ ქულის დამატება</button><button class="nav-btn ${page=='payout'?'active':''}" onclick="go('payout')">₾ თანხის გაცემა</button><button class="nav-btn ${page=='history'?'active':''}" onclick="go('history')">◷ ისტორია</button><button class="nav-btn ${page=='stats'?'active':''}" onclick="go('stats')">◈ სტატისტიკა</button>${userMenu}</div><div class="sidebar-footer"><b>${e(user?.name||'მომხმარებელი')}</b><br><span class="muted">${e(first(user?.role,user?.['როლი'],'მომხმარებელი'))}</span><br><button class="btn ghost small" onclick="logout()">გასვლა</button></div></aside><main class="main"><header class="topbar"><div><h1 class="page-title">${title()}</h1><div class="page-subtitle">სწრაფი ძებნა კოდით, სახელით, პირადობით ან ტელეფონით</div></div><div class="top-actions"><button class="btn ghost" onclick="reload()">განახლება</button><button class="btn primary" onclick="openDriver()">ტაქსისტის დამატება</button></div></header><section class="content">${body()}</section></main></div>`;
   bind();
 }
 
 function renderLogin(){app.innerHTML=`<section class="login-screen"><form class="login-card" id="lf"><div class="login-logo">🚕</div><h1 class="login-title">Taxi Brand House</h1><p class="login-subtitle">შეიყვანე მომხმარებელი და პაროლი</p><input class="input" name="u" placeholder="მომხმარებელი" required><br><br><input class="input" name="p" type="password" placeholder="პაროლი" required><br><br><button class="btn primary" style="width:100%">შესვლა</button><p class="muted">საწყისი: admin / admin123</p></form></section>`;document.getElementById('lf').onsubmit=async ev=>{ev.preventDefault();try{await login(ev.target.u.value,ev.target.p.value)}catch(er){msg('შეცდომა',er.message,'bad')}}}
-function title(){return page=='sale'?'ქულის დამატება':page=='payout'?'თანხის გაცემა':page=='history'?'ტაქსისტის ისტორია':page=='stats'?'სტატისტიკა':'ტაქსისტები'}
-function body(){return page=='sale'?op('sale'):page=='payout'?op('payout'):page=='history'?historyView():page=='stats'?stats():driversView()}
+function title(){return page=='sale'?'ქულის დამატება':page=='payout'?'თანხის გაცემა':page=='history'?'ტაქსისტის ისტორია':page=='stats'?'სტატისტიკა':page=='users'?'მომხმარებლები':'ტაქსისტები'}
+function body(){return page=='sale'?op('sale'):page=='payout'?op('payout'):page=='history'?historyView():page=='stats'?stats():page=='users'?usersView():driversView()}
 
 function driversView(){return `<div class="card"><div class="searchbar"><input id="q" class="input" placeholder="ძებნა: კოდი, სახელი, გვარი, პირადი ნომერი, ტელეფონი"><button class="btn primary" onclick="openDriver()">დამატება</button></div><div class="muted" style="margin-top:10px;font-size:13px">პირადი და ტელეფონი იძებნება ნებისმიერი ფორმატით. 61004015882 იპოვის 610 040 158 82-საც.</div></div><div class="card" style="margin-top:14px"><div class="table-wrap"><table class="table"><thead><tr><th>კოდი</th><th>სახელი გვარი</th><th>პირადი</th><th>ტელეფონი</th><th>ქულა</th><th>სტატუსი</th><th>მოქმედება</th></tr></thead><tbody id="rows">${rows(drivers)}</tbody></table></div></div>`}
 function rows(arr){return arr.map(d=>`<tr><td>${e(d.code)}</td><td><b>${e(d.fullName)}</b></td><td>${e(d.personalId)}</td><td>${e(d.phone)}</td><td class="points ${cls(d.balance)}">${fmt(d.balance)}</td><td><span class="badge">${e(d.status)}</span></td><td><button class="btn small ghost" onclick="openDriverByCode('${e(d.code)}')">რედაქტირება</button></td></tr>`).join('')||`<tr><td colspan="7"><div class="empty">მონაცემი არ არის</div></td></tr>`}
@@ -101,6 +103,11 @@ function timeText(o){return first(o.dateTime,o.createdAt,o.timestamp,o.date,o['�
 function typeText(o){let t=first(o.type,o.operation,o['ტიპი'],'');if(t=='sale')return 'ქულის დამატება';if(t=='payout')return 'თანხის გაცემა';return t}
 
 function stats(){let total=drivers.reduce((a,d)=>a+d.balance,0),neg=drivers.filter(d=>d.balance<0).length;return `<div class="grid cols-4"><div class="card metric"><div class="metric-label">სულ ტაქსისტები</div><div class="metric-value">${drivers.length}</div></div><div class="card metric"><div class="metric-label">აქტიური</div><div class="metric-value">${drivers.filter(d=>d.status=='აქტიური').length}</div></div><div class="card metric"><div class="metric-label">სულ დარჩენილი ქულა</div><div class="metric-value">${fmt(total)}</div></div><div class="card metric"><div class="metric-label">მინუსში</div><div class="metric-value">${neg}</div></div></div>`}
+
+function usersView(){
+  if(!isAdmin())return `<div class="card"><div class="empty">მომხმარებლების დამატება მხოლოდ ადმინისთვისაა.</div></div>`;
+  return `<div class="card"><h3 class="card-title">ახალი მომხმარებლის დამატება</h3><div class="form-row"><div class="field"><label class="label">სახელი</label><input id="uName" class="input" placeholder="მაგ: ნინო"></div><div class="field"><label class="label">მომხმარებელი</label><input id="uUser" class="input" placeholder="მაგ: nino"></div><div class="field"><label class="label">პაროლი</label><input id="uPass" class="input" type="password" placeholder="მაგ: 1234"></div><div class="field"><label class="label">როლი</label><select id="uRole" class="select"><option>მოლარე</option><option>ადმინი</option></select></div><div class="field"><label class="label">სტატუსი</label><select id="uStatus" class="select"><option>აქტიური</option><option>გათიშული</option></select></div></div><div class="form-actions"><button class="btn primary" onclick="addUser()">მომხმარებლის დამატება</button></div><p class="muted" style="margin-top:12px">პაროლი შიტში პირდაპირ არ ჩაიწერება. პროგრამა მას ჰეშად გადააქცევს და ისე შეინახავს.</p></div>`;
+}
 
 function bind(){let q=document.getElementById('q');if(q)q.oninput=()=>{document.getElementById('rows').innerHTML=rows(filter(q.value))};let f=document.getElementById('find');if(f)f.oninput=()=>{document.getElementById('list').innerHTML=driverList(filter(f.value).slice(0,25))};let hf=document.getElementById('hfind');if(hf)hf.oninput=()=>{document.getElementById('hlist').innerHTML=driverList(filter(hf.value).slice(0,25),'history')};let a=document.getElementById('amount');if(a){a.oninput=()=>{opAmount=a.value;render()};a.focus();a.selectionStart=a.selectionEnd=a.value.length}}
 function select(code){selectedCode=code;opAmount='';render()}
@@ -139,10 +146,27 @@ async function loadDriverHistory(code){
   histLoading=false;render();
 }
 
+async function addUser(){
+  const name=document.getElementById('uName')?.value.trim();
+  const username=document.getElementById('uUser')?.value.trim();
+  const password=document.getElementById('uPass')?.value.trim();
+  const role=document.getElementById('uRole')?.value||'მოლარე';
+  const status=document.getElementById('uStatus')?.value||'აქტიური';
+  if(!name||!username||!password)return msg('შეავსე ყველა ველი','სახელი, მომხმარებელი და პაროლი აუცილებელია','bad');
+  try{
+    msg('ინახება...','მომხმარებელი ემატება','info');
+    await call('addUser',{name,username,password,role,status});
+    document.getElementById('uName').value='';
+    document.getElementById('uUser').value='';
+    document.getElementById('uPass').value='';
+    msg('მომხმარებელი დაემატა',`${username} უკვე შეძლებს შესვლას`,'ok');
+  }catch(err){msg('მომხმარებელი ვერ დაემატა',err.message,'bad')}
+}
+
 function openDriverByCode(code){openDriver(driverByCode(code)||{})}
 function openDriver(d={}){document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="md"><div class="modal-card"><div class="modal-head"><h2>${d.code?'რედაქტირება':'დამატება'}</h2><button class="btn ghost" onclick="md.remove()">×</button></div><input id="fn" class="input" placeholder="სახელი გვარი" value="${e(d.fullName||'')}"><br><br><input id="pid" class="input" placeholder="პირადი ნომერი" value="${e(d.personalId||'')}"><br><br><input id="ph" class="input" placeholder="ტელეფონი" value="${e(d.phone||'')}"><br><br><input id="bal" class="input" type="text" placeholder="ქულა" value="${fmt(d.balance||0)}"><br><br><select id="st" class="select"><option ${d.status=='აქტიური'?'selected':''}>აქტიური</option><option ${d.status=='შეჩერებული'?'selected':''}>შეჩერებული</option><option ${d.status=='გაუქმებული'?'selected':''}>გაუქმებული</option></select><br><br><button class="btn primary" onclick="saveDriver('${e(d.code||'')}')">შენახვა</button></div></div>`)}
 async function saveDriver(code){try{const fullName=fn.value,points=n(bal.value);await call(code?'updateDriver':'addDriver',{code,name:fullName,fullName:fullName,personalId:pid.value,phone:ph.value,openingPoints:points,currentPoints:points,currentBalance:points,balance:points,status:st.value});md.remove();await load();render();msg('შენახულია','ტაქსისტის მონაცემი განახლდა','ok')}catch(e){msg('შეცდომა',e.message,'bad')}}
-function go(p){page=p;selectedCode='';opAmount='';render()}
+function go(p){if(p=='users'&&!isAdmin())return msg('წვდომა შეზღუდულია','მომხმარებლების დამატება მხოლოდ ადმინს შეუძლია','bad');page=p;selectedCode='';opAmount='';render()}
 async function reload(){msg('იტვირთება...','','info');await load();render();msg('განახლდა','','ok')}
 function logout(){localStorage.removeItem('taxiToken');localStorage.removeItem('taxiUser');token='';render()}
 if(token)load().then(render).catch(()=>renderLogin());else render();
