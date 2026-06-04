@@ -6,6 +6,9 @@ let drivers=[];
 let page='drivers';
 let selectedCode='';
 let opAmount='';
+let saleQueue=[];
+let saleAmounts={};
+let saleSaving={};
 let histCode='';
 let histRows=[];
 let histLoading=false;
@@ -13,8 +16,10 @@ const app=document.getElementById('app');
 const toastRoot=document.getElementById('toast-root')||document.getElementById('toast')||document.body;
 
 function e(s){return String(s??'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[m]))}
+function js(s){return JSON.stringify(String(s??''))}
 function digits(s){return String(s??'').replace(/\D/g,'')}
 function norm(s){return String(s??'').toLowerCase().replace(/\s+/g,' ').trim()}
+function safeKey(s){return 'k'+String(s??'').replace(/[^a-zA-Z0-9_-]/g,'_')}
 function n(v){
   if(typeof v==='number')return v;
   let s=String(v??'').trim();
@@ -89,11 +94,63 @@ function render(){
 
 function renderLogin(){app.innerHTML=`<section class="login-screen"><form class="login-card" id="lf"><div class="login-logo">🚕</div><h1 class="login-title">Taxi Brand House</h1><p class="login-subtitle">შეიყვანე მომხმარებელი და პაროლი</p><input class="input" name="u" placeholder="მომხმარებელი" required><br><br><input class="input" name="p" type="password" placeholder="პაროლი" required><br><br><button class="btn primary" style="width:100%">შესვლა</button><p class="muted">საწყისი: admin / admin123</p></form></section>`;document.getElementById('lf').onsubmit=async ev=>{ev.preventDefault();try{await login(ev.target.u.value,ev.target.p.value)}catch(er){msg('შეცდომა',er.message,'bad')}}}
 function title(){return page=='sale'?'ქულის დამატება':page=='payout'?'თანხის გაცემა':page=='history'?'ტაქსისტის ისტორია':page=='stats'?'სტატისტიკა':page=='users'?'მომხმარებლები':'ტაქსისტები'}
-function body(){return page=='sale'?op('sale'):page=='payout'?op('payout'):page=='history'?historyView():page=='stats'?stats():page=='users'?usersView():driversView()}
+function body(){return page=='sale'?saleView():page=='payout'?op('payout'):page=='history'?historyView():page=='stats'?stats():page=='users'?usersView():driversView()}
 
 function driversView(){return `<div class="card"><div class="searchbar"><input id="q" class="input" placeholder="ძებნა: კოდი, სახელი, გვარი, პირადი ნომერი, ტელეფონი"><button class="btn primary" onclick="openDriver()">დამატება</button></div><div class="muted" style="margin-top:10px;font-size:13px">პირადი და ტელეფონი იძებნება ნებისმიერი ფორმატით. 61004015882 იპოვის 610 040 158 82-საც.</div></div><div class="card" style="margin-top:14px"><div class="table-wrap"><table class="table"><thead><tr><th>კოდი</th><th>სახელი გვარი</th><th>პირადი</th><th>ტელეფონი</th><th>ქულა</th><th>სტატუსი</th><th>მოქმედება</th></tr></thead><tbody id="rows">${rows(drivers)}</tbody></table></div></div>`}
 function rows(arr){return arr.map(d=>`<tr><td>${e(d.code)}</td><td><b>${e(d.fullName)}</b></td><td>${e(d.personalId)}</td><td>${e(d.phone)}</td><td class="points ${cls(d.balance)}">${fmt(d.balance)}</td><td><span class="badge">${e(d.status)}</span></td><td><button class="btn small ghost" onclick="openDriverByCode('${e(d.code)}')">რედაქტირება</button></td></tr>`).join('')||`<tr><td colspan="7"><div class="empty">მონაცემი არ არის</div></td></tr>`}
-function driverList(arr,mode='op'){return arr.map(d=>`<div class="driver-card" onclick="${mode=='history'?`selectHistory('${e(d.code)}')`:`select('${e(d.code)}')`}"><div><strong>${e(d.fullName)}</strong><small>${e(d.code)} • ${e(d.personalId)} • ${e(d.phone)}</small></div><b class="points ${cls(d.balance)}">${fmt(d.balance)}</b></div>`).join('')||`<div class="empty">მონაცემი არ არის</div>`}
+function driverList(arr,mode='op'){return arr.map(d=>`<div class="driver-card" onclick="${mode=='history'?`selectHistory('${e(d.code)}')`:mode=='sale'?`addSale(${js(d.code)})`:`select('${e(d.code)}')`}"><div><strong>${e(d.fullName)}</strong><small>${e(d.code)} • ${e(d.personalId)} • ${e(d.phone)}</small></div><b class="points ${cls(d.balance)}">${fmt(d.balance)}</b></div>`).join('')||`<div class="empty">მონაცემი არ არის</div>`}
+
+function saleView(){
+  return `<div class="grid cols-2"><div class="card"><h3 class="card-title">ტაქსისტის ძებნა</h3><input id="find" class="input" placeholder="კოდი / სახელი / გვარი / პირადი / ტელეფონი"><div class="muted" style="margin-top:8px;font-size:13px">ტაქსისტს რომ დააჭერ, მარჯვნივ დაემატება მოლოდინის სიაში. შეგიძლია რამდენიმე ერთად გახსნა.</div><div id="list" style="display:grid;gap:8px;margin-top:12px">${driverList(drivers.slice(0,12),'sale')}</div></div><div class="card"><h3 class="card-title">მოლოდინის სია</h3>${saleQueueView()}</div></div>`;
+}
+function saleQueueView(){
+  const list=saleQueue.map(code=>driverByCode(code)).filter(Boolean);
+  if(!list.length)return `<div class="empty">აირჩიე ერთი ან რამდენიმე ტაქსისტი ქულის დასაწერად</div>`;
+  return `<div style="display:grid;gap:12px">${list.map(saleCard).join('')}</div>`;
+}
+function saleCard(d){
+  const k=safeKey(d.code),amount=n(saleAmounts[d.code]),newBal=d.balance+amount,disabled=saleSaving[d.code]?'disabled':'';
+  return `<div class="driver-card" style="align-items:stretch;display:grid;gap:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><strong>${e(d.fullName)}</strong><small>${e(d.code)} • ${e(d.personalId)} • ${e(d.phone)}</small></div><button class="btn ghost small" onclick="removeSale(${js(d.code)})" ${disabled}>×</button></div><div class="calc-box"><div class="calc-item"><span>ძველი ქულა</span><strong>${fmt(d.balance)}</strong></div><div class="calc-item"><span>დასამატებელი</span><input id="saleAmt_${k}" class="input" type="text" style="margin-top:8px" placeholder="ქულა" value="${e(saleAmounts[d.code]||'')}" oninput="saleAmounts[${js(d.code)}]=this.value;updateSaleCalc(${js(d.code)})" ${disabled}></div><div class="calc-item"><span>ახალი ბალანსი</span><strong id="saleNew_${k}" class="${cls(newBal)}">${fmt(newBal)}</strong></div></div><div class="form-actions" style="margin-top:0"><button class="btn success" onclick="saveSale(${js(d.code)})" ${disabled}>${saleSaving[d.code]?'ინახება...':'შენახვა'}</button><button class="btn ghost" onclick="goHistory(${js(d.code)})" ${disabled}>ისტორია</button></div></div>`;
+}
+function addSale(code){
+  code=String(code);
+  if(!saleQueue.includes(code)){
+    saleQueue.push(code);
+    saleAmounts[code]=saleAmounts[code]||'';
+    msg('დაემატა მოლოდინში',driverByCode(code)?.fullName||code,'ok');
+  }
+  render();
+}
+function removeSale(code){code=String(code);saleQueue=saleQueue.filter(x=>String(x)!==code);delete saleAmounts[code];delete saleSaving[code];render()}
+function updateSaleCalc(code){
+  const d=driverByCode(code),el=document.getElementById('saleNew_'+safeKey(code));
+  if(!d||!el)return;
+  const nb=d.balance+n(saleAmounts[code]);
+  el.textContent=fmt(nb);
+  el.className=cls(nb);
+}
+async function saveSale(code){
+  code=String(code);
+  const d=driverByCode(code),amt=n(saleAmounts[code]);
+  if(!d||amt<=0)return msg('შეავსე ქულა','ქულა უნდა იყოს 0-ზე მეტი','bad');
+  const oldBalance=d.balance;
+  d.balance=oldBalance+amt;
+  saleSaving[code]=true;
+  render();
+  try{
+    await call('addSale',{driverCode:d.code,amount:amt,points:amt,oldBalance,newBalance:d.balance});
+    saleQueue=saleQueue.filter(x=>String(x)!==code);
+    delete saleAmounts[code];
+    delete saleSaving[code];
+    render();
+    msg('შენახულია',`${d.fullName} • +${fmt(amt)} ქულა`,'ok');
+  }catch(err){
+    d.balance=oldBalance;
+    saleSaving[code]=false;
+    render();
+    msg('შენახვა ვერ შესრულდა',err.message,'bad');
+  }
+}
 
 function op(type){const selected=driverByCode(selectedCode);let cash=type=='payout'?n(opAmount)*RATE:0;let amt=n(opAmount);let nb=selected?selected.balance+(type=='sale'?amt:-amt):0;return `<div class="grid cols-2"><div class="card"><h3 class="card-title">ტაქსისტის ძებნა</h3><input id="find" class="input" placeholder="კოდი / სახელი / გვარი / პირადი / ტელეფონი"><div id="list" style="display:grid;gap:8px;margin-top:12px">${driverList(drivers.slice(0,12))}</div></div><div class="card"><h3 class="card-title">ოპერაცია</h3>${selected?`<div class="driver-card"><div><strong>${e(selected.fullName)}</strong><small>${e(selected.code)} • ${e(selected.personalId)} • ${e(selected.phone)}</small></div><div class="big-balance ${cls(selected.balance)}">${fmt(selected.balance)}</div></div><br><input id="amount" class="input" type="text" placeholder="${type=='sale'?'ნავაჭრი':'გასაცემი ქულა'}" value="${e(opAmount)}"><div class="calc-box"><div class="calc-item"><span>ძველი ქულა</span><strong>${fmt(selected.balance)}</strong></div><div class="calc-item"><span>${type=='payout'?'მისაცემი თანხა':'დასამატებელი'}</span><strong>${type=='payout'?gel(cash):fmt(amt)}</strong></div><div class="calc-item"><span>ახალი ბალანსი</span><strong class="${cls(nb)}">${fmt(nb)}</strong></div></div><br><button class="btn ${type=='sale'?'success':'primary'}" onclick="saveOp('${type}')">დადასტურება</button><button class="btn ghost" onclick="goHistory('${e(selected.code)}')">ისტორიის ნახვა</button>`:`<div class="empty">აირჩიე ტაქსისტი</div>`}</div></div>`}
 
@@ -109,7 +166,7 @@ function usersView(){
   return `<div class="card"><h3 class="card-title">ახალი მომხმარებლის დამატება</h3><div class="form-row"><div class="field"><label class="label">სახელი</label><input id="uName" class="input" placeholder="მაგ: ნინო"></div><div class="field"><label class="label">მომხმარებელი</label><input id="uUser" class="input" placeholder="მაგ: nino"></div><div class="field"><label class="label">პაროლი</label><input id="uPass" class="input" type="password" placeholder="მაგ: 1234"></div><div class="field"><label class="label">როლი</label><select id="uRole" class="select"><option>მოლარე</option><option>ადმინი</option></select></div><div class="field"><label class="label">სტატუსი</label><select id="uStatus" class="select"><option>აქტიური</option><option>გათიშული</option></select></div></div><div class="form-actions"><button class="btn primary" onclick="addUser()">მომხმარებლის დამატება</button></div><p class="muted" style="margin-top:12px">პაროლი შიტში პირდაპირ არ ჩაიწერება. პროგრამა მას ჰეშად გადააქცევს და ისე შეინახავს.</p></div>`;
 }
 
-function bind(){let q=document.getElementById('q');if(q)q.oninput=()=>{document.getElementById('rows').innerHTML=rows(filter(q.value))};let f=document.getElementById('find');if(f)f.oninput=()=>{document.getElementById('list').innerHTML=driverList(filter(f.value).slice(0,25))};let hf=document.getElementById('hfind');if(hf)hf.oninput=()=>{document.getElementById('hlist').innerHTML=driverList(filter(hf.value).slice(0,25),'history')};let a=document.getElementById('amount');if(a){a.oninput=()=>{opAmount=a.value;render()};a.focus();a.selectionStart=a.selectionEnd=a.value.length}}
+function bind(){let q=document.getElementById('q');if(q)q.oninput=()=>{document.getElementById('rows').innerHTML=rows(filter(q.value))};let f=document.getElementById('find');if(f)f.oninput=()=>{document.getElementById('list').innerHTML=driverList(filter(f.value).slice(0,25),page=='sale'?'sale':'op')};let hf=document.getElementById('hfind');if(hf)hf.oninput=()=>{document.getElementById('hlist').innerHTML=driverList(filter(hf.value).slice(0,25),'history')};let a=document.getElementById('amount');if(a){a.oninput=()=>{opAmount=a.value;render()};a.focus();a.selectionStart=a.selectionEnd=a.value.length}}
 function select(code){selectedCode=code;opAmount='';render()}
 function selectHistory(code){histCode=code;histRows=[];render();loadDriverHistory(code)}
 function goHistory(code){histCode=code;histRows=[];page='history';render();loadDriverHistory(code)}
@@ -165,7 +222,7 @@ async function addUser(){
 
 function openDriverByCode(code){openDriver(driverByCode(code)||{})}
 function openDriver(d={}){document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" id="md"><div class="modal-card"><div class="modal-head"><h2>${d.code?'რედაქტირება':'დამატება'}</h2><button class="btn ghost" onclick="md.remove()">×</button></div><input id="fn" class="input" placeholder="სახელი გვარი" value="${e(d.fullName||'')}"><br><br><input id="pid" class="input" placeholder="პირადი ნომერი" value="${e(d.personalId||'')}"><br><br><input id="ph" class="input" placeholder="ტელეფონი" value="${e(d.phone||'')}"><br><br><input id="bal" class="input" type="text" placeholder="ქულა" value="${fmt(d.balance||0)}"><br><br><select id="st" class="select"><option ${d.status=='აქტიური'?'selected':''}>აქტიური</option><option ${d.status=='შეჩერებული'?'selected':''}>შეჩერებული</option><option ${d.status=='გაუქმებული'?'selected':''}>გაუქმებული</option></select><br><br><button class="btn primary" onclick="saveDriver('${e(d.code||'')}')">შენახვა</button></div></div>`)}
-async function saveDriver(code){try{const fullName=fn.value,points=n(bal.value);await call(code?'updateDriver':'addDriver',{code,name:fullName,fullName:fullName,personalId:pid.value,phone:ph.value,openingPoints:points,currentPoints:points,currentBalance:points,balance:points,status:st.value});md.remove();await load();render();msg('შენახულია','ტაქსისტის მონაცემი განახლდა','ok')}catch(e){msg('შეცდომა',e.message,'bad')}}
+async function saveDriver(code){try{const fullName=fn.value,points=n(bal.value);await call(code?'updateDriver':'addDriver',{code,name:fullName,fullName:fullName,personalId:pid.value,phone:ph.value,openingPoints:points,currentPoints:points,currentBalance:points,balance:points,status:st.value});md.remove();await load();render();msg('შენახულია','ტაქსისტის მონაცემი განახლდა','ok')}catch(err){msg('შეცდომა',err.message,'bad')}}
 function go(p){if(p=='users'&&!isAdmin())return msg('წვდომა შეზღუდულია','მომხმარებლების დამატება მხოლოდ ადმინს შეუძლია','bad');page=p;selectedCode='';opAmount='';render()}
 async function reload(){msg('იტვირთება...','','info');await load();render();msg('განახლდა','','ok')}
 function logout(){localStorage.removeItem('taxiToken');localStorage.removeItem('taxiUser');token='';render()}
