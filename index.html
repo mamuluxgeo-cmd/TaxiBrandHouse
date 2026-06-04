@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260604-2" />
 </head>
 <body>
   <div class="aurora aurora-one"></div>
@@ -25,6 +25,29 @@
       APP_NAME: 'Taxi Brand House'
     };
   </script>
-  <script src="script.js"></script>
+  <script src="script.js?v=20260604-queue-fix"></script>
+  <script>
+    function taxiQuoteCode(value) {
+      return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
+    }
+
+    window.driverList = function(arr, mode = 'op') {
+      if (!arr || !arr.length) return '<div class="empty">მონაცემი არ არის</div>';
+      return arr.map(function(d) {
+        var c = taxiQuoteCode(d.code);
+        var click = mode === 'history' ? "selectHistory('" + c + "')" : mode === 'sale' ? "addSale('" + c + "')" : "select('" + c + "')";
+        return '<div class="driver-card" onclick="' + click + '"><div><strong>' + e(d.fullName) + '</strong><small>' + e(d.code) + ' • ' + e(d.personalId) + ' • ' + e(d.phone) + '</small></div><b class="points ' + cls(d.balance) + '">' + fmt(d.balance) + '</b></div>';
+      }).join('');
+    };
+
+    window.saleCard = function(d) {
+      var c = taxiQuoteCode(d.code);
+      var key = safeKey(d.code);
+      var amount = n(saleAmounts[d.code]);
+      var newBal = d.balance + amount;
+      var disabled = saleSaving[d.code] ? 'disabled' : '';
+      return '<div class="driver-card" style="align-items:stretch;display:grid;gap:12px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><strong>' + e(d.fullName) + '</strong><small>' + e(d.code) + ' • ' + e(d.personalId) + ' • ' + e(d.phone) + '</small></div><button class="btn ghost small" onclick="removeSale(\'' + c + '\')" ' + disabled + '>×</button></div><div class="calc-box"><div class="calc-item"><span>ძველი ქულა</span><strong>' + fmt(d.balance) + '</strong></div><div class="calc-item"><span>დასამატებელი</span><input id="saleAmt_' + key + '" class="input" type="text" style="margin-top:8px" placeholder="ქულა" value="' + e(saleAmounts[d.code] || '') + '" oninput="saleAmounts[\'' + c + '\']=this.value;updateSaleCalc(\'' + c + '\')" ' + disabled + '></div><div class="calc-item"><span>ახალი ბალანსი</span><strong id="saleNew_' + key + '" class="' + cls(newBal) + '">' + fmt(newBal) + '</strong></div></div><div class="form-actions" style="margin-top:0"><button class="btn success" onclick="saveSale(\'' + c + '\')" ' + disabled + '>' + (saleSaving[d.code] ? 'ინახება...' : 'შენახვა') + '</button><button class="btn ghost" onclick="goHistory(\'' + c + '\')" ' + disabled + '>ისტორია</button></div></div>';
+    };
+  </script>
 </body>
 </html>
